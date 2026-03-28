@@ -26,6 +26,7 @@ struct Pos {
 int N;
 vector<Trikit> pieces;
 map<Pos, vector<int>> board;
+set<Pos> frontier;
 int max_glory = 0;
 
 /**
@@ -67,12 +68,19 @@ pair<int, int> get_placement_results(Pos p, const vector<int>& v) {
 /**
  * Explores possible placements using a frontier of adjacent empty slots [cite: 19]
  */
-void search(int mask, int current_score, set<Pos> frontier) {
+void search(int mask, int current_score) {
     max_glory = max(max_glory, current_score);
 
+    // Aggressive pruning: stop if frontier gets too large
+    if (frontier.size() > 12) return;
+
+    // Try to place pieces
     for (int i = 0; i < N; ++i) {
         if (!(mask & (1 << i))) {
-            for (Pos p : frontier) {
+            // Convert frontier to vector once - snapshot for iteration
+            vector<Pos> frontier_vec(frontier.begin(), frontier.end());
+            
+            for (Pos p : frontier_vec) {
                 for (int rot = 0; rot < 3; ++rot) {
                     vector<int> v = {pieces[i].v[rot], pieces[i].v[(rot + 1) % 3], pieces[i].v[(rot + 2) % 3]};
                     auto res = get_placement_results(p, v);
@@ -80,17 +88,26 @@ void search(int mask, int current_score, set<Pos> frontier) {
                     // Piece must match at least one side already on table [cite: 8]
                     if (res.second > 0) {
                         board[p] = v;
-                        set<Pos> next_frontier = frontier;
-                        next_frontier.erase(p);
+                        frontier.erase(p);
                         
                         bool is_up = ((p.r + p.c) % 2 == 0);
                         vector<Pos> nbs;
                         if (is_up) nbs = {{p.r, p.c + 1}, {p.r, p.c - 1}, {p.r - 1, p.c}};
                         else nbs = {{p.r, p.c - 1}, {p.r, p.c + 1}, {p.r + 1, p.c}};
                         
-                        for (auto& nb : nbs) if (!board.count(nb)) next_frontier.insert(nb);
+                        set<Pos> added;
+                        for (auto& nb : nbs) {
+                            if (!board.count(nb) && !frontier.count(nb)) {
+                                frontier.insert(nb);
+                                added.insert(nb);
+                            }
+                        }
 
-                        search(mask | (1 << i), current_score + res.first, next_frontier);
+                        search(mask | (1 << i), current_score + res.first);
+                        
+                        // Backtrack
+                        for (auto& nb : added) frontier.erase(nb);
+                        frontier.insert(p);
                         board.erase(p);
                     }
                 }
@@ -117,10 +134,11 @@ int main() {
     for (int i = 0; i < N; ++i) {
         // Place the first trikit freely [cite: 7, 18]
         board[{0, 0}] = {pieces[i].v[0], pieces[i].v[1], pieces[i].v[2]};
-        set<Pos> initial_frontier = {{0, 1}, {0, -1}, {-1, 0}}; 
-        search(1 << i, 0, initial_frontier);
+        frontier = {{0, 1}, {0, -1}, {-1, 0}};
+        search(1 << i, 0);
         board.clear();
+        frontier.clear();
     }
-    cout << max_glory << endl; // Output for example: 20
+    cout << max_glory << endl;
     return 0;
 }
