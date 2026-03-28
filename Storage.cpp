@@ -10,41 +10,41 @@ using namespace std;
 
 // Represents a trikit with numbers at its corners in clockwise order [cite: 3, 4]
 struct Trikit {
-    int v[3]; 
+    int corners[3]; 
 };
 
 // Coordinate system for the triangular grid
 // Up-pointing: (r + c) is even; Down-pointing: (r + c) is odd
-struct Pos {
-    int r, c;
-    bool operator<(const Pos& o) const {
-        if (r != o.r) return r < o.r;
-        return c < o.c;
+struct Position {
+    int row, col;
+    bool operator<(const Position& other) const {
+        if (row != other.row) return row < other.row;
+        return col < other.col;
     }
 };
 
 int N;
 vector<Trikit> pieces;
-map<Pos, vector<int>> board;
-set<Pos> frontier;
-int max_glory = 0;
+map<Position, vector<int>> board;
+set<Position> frontier;
+int best_score = 0;
 
 /**
  * Validates side-to-side corner matches and calculates points [cite: 12, 44]
  * Corner Mapping (Up): 0:Top, 1:Bottom-Right, 2:Bottom-Left
  * Corner Mapping (Down): 0:Bottom, 1:Top-Left, 2:Top-Right
  */
-pair<int, int> get_placement_results(Pos p, const vector<int>& v) {
-    bool is_up = ((p.r + p.c) % 2 == 0);
+pair<int, int> get_placement_results(Position position, const vector<int>& piece_values) {
+    bool is_up = ((position.row + position.col) % 2 == 0);
     int points = 0;
     int matches = 0;
 
-    auto check = [&](Pos nb, int my1, int nb1, int my2, int nb2) {
-        if (board.count(nb)) {
-            const auto& nv = board[nb];
+    auto check = [&](Position neighbor, int my_corner1, int neighbor_corner1, int my_corner2, int neighbor_corner2) {
+        if (board.count(neighbor)) {
+            const auto& neighbor_values = board[neighbor];
             // Match happens when two tiles share a side with the same two numbers [cite: 9]
-            if (v[my1] == nv[nb1] && v[my2] == nv[nb2]) {
-                points += v[my1] + v[my2]; // Points are the sum of matching numbers [cite: 12]
+            if (piece_values[my_corner1] == neighbor_values[neighbor_corner1] && piece_values[my_corner2] == neighbor_values[neighbor_corner2]) {
+                points += piece_values[my_corner1] + piece_values[my_corner2]; // Points are the sum of matching numbers [cite: 12]
                 matches++;
                 return true;
             }
@@ -54,13 +54,13 @@ pair<int, int> get_placement_results(Pos p, const vector<int>& v) {
     };
 
     if (is_up) {
-        if (!check({p.r, p.c + 1}, 0, 1, 1, 0)) return {-1, 0}; // Right (Down nb)
-        if (!check({p.r, p.c - 1}, 0, 2, 2, 0)) return {-1, 0}; // Left (Down nb)
-        if (!check({p.r - 1, p.c}, 1, 2, 2, 1)) return {-1, 0}; // Bottom (Down nb)
+        if (!check({position.row, position.col + 1}, 0, 1, 1, 0)) return {-1, 0}; // Right (Down nb)
+        if (!check({position.row, position.col - 1}, 0, 2, 2, 0)) return {-1, 0}; // Left (Down nb)
+        if (!check({position.row - 1, position.col}, 1, 2, 2, 1)) return {-1, 0}; // Bottom (Down nb)
     } else {
-        if (!check({p.r, p.c - 1}, 0, 1, 1, 0)) return {-1, 0}; // Left (Up nb)
-        if (!check({p.r, p.c + 1}, 0, 2, 2, 0)) return {-1, 0}; // Right (Up nb)
-        if (!check({p.r + 1, p.c}, 1, 2, 2, 1)) return {-1, 0}; // Top (Up nb)
+        if (!check({position.row, position.col - 1}, 0, 1, 1, 0)) return {-1, 0}; // Left (Up nb)
+        if (!check({position.row, position.col + 1}, 0, 2, 2, 0)) return {-1, 0}; // Right (Up nb)
+        if (!check({position.row + 1, position.col}, 1, 2, 2, 1)) return {-1, 0}; // Top (Up nb)
     }
     return {points, matches};
 }
@@ -68,47 +68,44 @@ pair<int, int> get_placement_results(Pos p, const vector<int>& v) {
 /**
  * Explores possible placements using a frontier of adjacent empty slots [cite: 19]
  */
-void search(int mask, int current_score) {
-    max_glory = max(max_glory, current_score);
+void search(int used_mask, int current_score) {
+    best_score = max(best_score, current_score);
 
-    // Aggressive pruning: stop if frontier gets too large
+    // Prune: stop if frontier gets too large
     if (frontier.size() > 12) return;
 
-    // Try to place pieces
-    for (int i = 0; i < N; ++i) {
-        if (!(mask & (1 << i))) {
-            // Convert frontier to vector once - snapshot for iteration
-            vector<Pos> frontier_vec(frontier.begin(), frontier.end());
-            
-            for (Pos p : frontier_vec) {
-                for (int rot = 0; rot < 3; ++rot) {
-                    vector<int> v = {pieces[i].v[rot], pieces[i].v[(rot + 1) % 3], pieces[i].v[(rot + 2) % 3]};
-                    auto res = get_placement_results(p, v);
+    for (int piece_index = 0; piece_index < N; ++piece_index) {
+        if (!(used_mask & (1 << piece_index))) {
+            vector<Position> current_frontier(frontier.begin(), frontier.end());
+            for (Position pos : current_frontier) {
+                for (int rotation = 0; rotation < 3; ++rotation) {
+                    vector<int> rotated_piece = {pieces[piece_index].corners[rotation], pieces[piece_index].corners[(rotation + 1) % 3], pieces[piece_index].corners[(rotation + 2) % 3]};
+                    auto placement_result = get_placement_results(pos, rotated_piece);
                     
                     // Piece must match at least one side already on table [cite: 8]
-                    if (res.second > 0) {
-                        board[p] = v;
-                        frontier.erase(p);
+                    if (placement_result.second > 0) {
+                        board[pos] = rotated_piece;
+                        frontier.erase(pos);
                         
-                        bool is_up = ((p.r + p.c) % 2 == 0);
-                        vector<Pos> nbs;
-                        if (is_up) nbs = {{p.r, p.c + 1}, {p.r, p.c - 1}, {p.r - 1, p.c}};
-                        else nbs = {{p.r, p.c - 1}, {p.r, p.c + 1}, {p.r + 1, p.c}};
+                        bool is_up = ((pos.row + pos.col) % 2 == 0);
+                        vector<Position> neighbors;
+                        if (is_up) neighbors = {{pos.row, pos.col + 1}, {pos.row, pos.col - 1}, {pos.row - 1, pos.col}};
+                        else neighbors = {{pos.row, pos.col - 1}, {pos.row, pos.col + 1}, {pos.row + 1, pos.col}};
                         
-                        set<Pos> added;
-                        for (auto& nb : nbs) {
-                            if (!board.count(nb) && !frontier.count(nb)) {
-                                frontier.insert(nb);
-                                added.insert(nb);
+                        set<Position> newly_added;
+                        for (auto& neighbor : neighbors) {
+                            if (!board.count(neighbor) && !frontier.count(neighbor)) {
+                                frontier.insert(neighbor);
+                                newly_added.insert(neighbor);
                             }
                         }
 
-                        search(mask | (1 << i), current_score + res.first);
+                        search(used_mask | (1 << piece_index), current_score + placement_result.first);
                         
                         // Backtrack
-                        for (auto& nb : added) frontier.erase(nb);
-                        frontier.insert(p);
-                        board.erase(p);
+                        for (auto& neighbor : newly_added) frontier.erase(neighbor);
+                        frontier.insert(pos);
+                        board.erase(pos);
                     }
                 }
             }
@@ -120,25 +117,25 @@ int main() {
     string line;
     while (getline(cin, line)) {
         if (line.empty()) continue;
-        Trikit t;
+        Trikit piece;
         if (line.find(' ') == string::npos && line.length() >= 3) {
-            for(int j=0; j<3; ++j) t.v[j] = line[j] - '0';
+            for(int j = 0; j < 3; ++j) piece.corners[j] = line[j] - '0';
         } else {
             stringstream ss(line);
-            ss >> t.v[0] >> t.v[1] >> t.v[2];
+            ss >> piece.corners[0] >> piece.corners[1] >> piece.corners[2];
         }
-        pieces.push_back(t);
+        pieces.push_back(piece);
     }
     
     N = pieces.size();
-    for (int i = 0; i < N; ++i) {
+    for (int starting_piece = 0; starting_piece < N; ++starting_piece) {
         // Place the first trikit freely [cite: 7, 18]
-        board[{0, 0}] = {pieces[i].v[0], pieces[i].v[1], pieces[i].v[2]};
+        board[{0, 0}] = {pieces[starting_piece].corners[0], pieces[starting_piece].corners[1], pieces[starting_piece].corners[2]};
         frontier = {{0, 1}, {0, -1}, {-1, 0}};
-        search(1 << i, 0);
+        search(1 << starting_piece, 0);
         board.clear();
         frontier.clear();
     }
-    cout << max_glory << endl;
+    cout << best_score << endl;
     return 0;
 }
