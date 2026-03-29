@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <map>
 #include <set>
+#include <numeric>
+#include <numeric>
 
 using namespace std;
 
@@ -72,7 +74,7 @@ void search(int used_mask, int current_score) {
     best_score = max(best_score, current_score);
 
     // Prune: stop if frontier gets too large
-    if (frontier.size() > 12) return;
+    if (frontier.size() > 10) return;
 
     for (int piece_index = 0; piece_index < N; ++piece_index) {
         if (!(used_mask & (1 << piece_index))) {
