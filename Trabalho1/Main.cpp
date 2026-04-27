@@ -18,6 +18,7 @@ struct Placed {
 
 class Game {
 private:
+    // Tabuleiro grande para expandir a partir do centro.
     static const int SIZE = 100;
     static const int CENTER = 50;
 
@@ -31,15 +32,15 @@ private:
     int N = 0;
     int max_score = 0;
 
-    bool is_up(int x, int y) {
-        return (x + y) % 2 == 0;
-    }
-
     bool can_place(int x, int y, int c[3], int &gain) {
         gain = 0;
         int matches = 0;
 
-        if (is_up(x, y)) {
+        // Verifica se a pode ser colocada em (x, y).
+        // Se tiver em vizinhos ocupados, todos esses lados teem de coincidir.
+        // Sempre que ha coincidencia, soma-se ao valor final
+        if ((x + y) % 2 == 0) {
+            // Triangulo virado para cima: compara com direita, baixo e esquerda.
             if (occupied[x + 1][y]) {
                 if (c[0] == board[x + 1][y].c[1] && c[1] == board[x + 1][y].c[0]) {
                     gain += c[0] + c[1]; matches++;
@@ -56,6 +57,7 @@ private:
                 } else return false;
             }
         } else {
+            // Triangulo virado para baixo: compara com esquerda, cima e direita.
             if (occupied[x - 1][y]) {
                 if (c[0] == board[x - 1][y].c[1] && c[1] == board[x - 1][y].c[0]) {
                     gain += c[0] + c[1]; matches++;
@@ -73,12 +75,14 @@ private:
             }
         }
 
+        // A jogada so e valida se a peca encaixar em pelo menos um vizinho ja colocado.
         return matches > 0;
     }
 
     vector<Pos> get_neighbors(Pos p) {
         vector<Pos> res;
-        if (is_up(p.x, p.y)) {
+        // Cada triangulo tem exatamente tres posicoes adjacentes.
+        if ((p.x + p.y) % 2 == 0) {
             res = {{p.x + 1, p.y}, {p.x - 1, p.y}, {p.x, p.y + 1}};
         } else {
             res = {{p.x - 1, p.y}, {p.x, p.y - 1}, {p.x + 1, p.y}};
@@ -90,50 +94,56 @@ private:
         max_score = max(max_score, score);
         if (open_slots.empty()) return;
 
-        Pos p = *open_slots.begin();
+        Pos current_slot = *open_slots.begin();
         open_slots.erase(open_slots.begin());
 
-        // Option 1: block this position
-        blocked[p.x][p.y] = true;
+        // Opcao 1: desistir desta posicao e continuar a explorar as restantes.
+        blocked[current_slot.x][current_slot.y] = true;
         solve(score, open_slots, start_i);
-        blocked[p.x][p.y] = false;
+        blocked[current_slot.x][current_slot.y] = false;
 
-        // Option 2: place tiles
+        // Opcao 2: tentar colocar uma peca ainda nao usada nesta posicao.
         for (int i = start_i + 1; i < N; i++) {
             if (used[i]) continue;
 
-            int configs[3][3] = {
+            int rotations[3][3] = {
                 {tiles[i].v[0], tiles[i].v[1], tiles[i].v[2]},
                 {tiles[i].v[1], tiles[i].v[2], tiles[i].v[0]},
                 {tiles[i].v[2], tiles[i].v[0], tiles[i].v[1]}
             };
 
             for (int k = 0; k < 3; k++) {
-                int gain;
-                if (!can_place(p.x, p.y, configs[k], gain)) continue;
+                int gain = 0;
+                if (!can_place(current_slot.x, current_slot.y, rotations[k], gain)) {
+                    continue;
+                }
 
                 used[i] = true;
-                occupied[p.x][p.y] = true;
-                memcpy(board[p.x][p.y].c, configs[k], sizeof(int) * 3);
+                occupied[current_slot.x][current_slot.y] = true;
+                memcpy(board[current_slot.x][current_slot.y].c, rotations[k], sizeof(int) * 3);
 
-                vector<Pos> added;
-                for (auto nb : get_neighbors(p)) {
-                    if (!occupied[nb.x][nb.y] && !blocked[nb.x][nb.y] &&
-                        open_slots.find(nb) == open_slots.end()) {
-                        open_slots.insert(nb);
-                        added.push_back(nb);
-                    }
+                vector<Pos> new_open_slots;
+                // Cada vizinho vazio passa a ser uma nova posicao candidata.
+                for (const Pos& neighbor : get_neighbors(current_slot)) {
+                    if (occupied[neighbor.x][neighbor.y]) continue;
+                    if (blocked[neighbor.x][neighbor.y]) continue;
+                    if (open_slots.find(neighbor) != open_slots.end()) continue;
+
+                    open_slots.insert(neighbor);
+                    new_open_slots.push_back(neighbor);
                 }
 
                 solve(score + gain, open_slots, start_i);
 
-                for (auto nb : added) open_slots.erase(nb);
-                occupied[p.x][p.y] = false;
+                for (const Pos& neighbor : new_open_slots) {
+                    open_slots.erase(neighbor);
+                }
+                occupied[current_slot.x][current_slot.y] = false;
                 used[i] = false;
             }
         }
 
-        open_slots.insert(p);
+        open_slots.insert(current_slot);
     }
 
 public:
@@ -143,6 +153,7 @@ public:
             N++;
         }
 
+        // Tenta cada peca como peca inicial colocada no centro do tabuleiro.
         for (int i = 0; i < N; i++) {
             used[i] = true;
             occupied[CENTER][CENTER] = true;
