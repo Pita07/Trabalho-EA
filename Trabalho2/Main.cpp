@@ -2,6 +2,7 @@
 #include <vector>
 #include <stack>    
 #include <algorithm>
+#include <unordered_set>
 
 using namespace std;
 
@@ -52,7 +53,6 @@ void tarjan(int v, vector<Element>& elements, int& time, stack<int>& st, vector<
 bool has_Positive_cycle(const vector<int>& scc, const vector<Element>& elements) {
     int n = scc.size();
 
-    // Single node: only qualifies if it has a positive self-loop
     if (n == 1) {
         int u = scc[0];
         for (int i = 0; i < (int)elements[u].adj.size(); i++) {
@@ -62,47 +62,22 @@ bool has_Positive_cycle(const vector<int>& scc, const vector<Element>& elements)
         return false;
     }
 
-    // Initialize distances to 0 (instead of infinity, since we just need cycle detection)
-    vector<int> d(n, 0);
-
-    // Map global index to local SCC index
-    vector<int> localIdx(elements.size(), -1);
-    for (int i = 0; i < n; i++)
-        localIdx[scc[i]] = i;
-
-    // Relax |V| - 1 times
-    for (int i = 0; i < n - 1; i++) {
-        for (int u : scc) {
-            int lu = localIdx[u];
-            for (int j = 0; j < (int)elements[u].adj.size(); j++) {
-                int v = elements[u].adj[j];
-                if (localIdx[v] == -1) continue; // outside this SCC
-                int lv = localIdx[v];
-                int w = elements[u].weights[j];
-                if (d[lu] + w < d[lv])
-                    d[lv] = d[lu] + w;
-            }
-        }
-    }
-
-    // Check for negative cycle (fuel profit cycle)
+    // In a SCC with 2+ nodes, just one edge with negative weight (fuel gain) is enough to have a positive cycle
+    unordered_set<int> inSCC(scc.begin(), scc.end());
     for (int u : scc) {
-        int lu = localIdx[u];
         for (int j = 0; j < (int)elements[u].adj.size(); j++) {
-            int v = elements[u].adj[j];
-            if (localIdx[v] == -1) continue;
-            int lv = localIdx[v];
-            int w = elements[u].weights[j];
-            if (d[lu] + w < d[lv])
+            if (inSCC.count(elements[u].adj[j]) && elements[u].weights[j] < 0)
                 return true;
         }
     }
     return false;
 }
 
+
 int main() {
     int P, W; // number of vertices and connections
     cin >> P >> W;
+    if (P < 5 || P > 60000 || W < 5 || W > 100000) return 0; // Constraints check
     vector<Element> elements;
     for (int i = 0; i < P; i++) {
         elements.push_back(Element(i));
