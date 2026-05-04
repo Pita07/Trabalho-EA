@@ -19,7 +19,7 @@ public:
     Element(int val) : num(val), low(-1), dfs(-1), visited(false), onStack(false), weights(), adj() {}
 };
 
-// Tarjan alghoritm
+// Tarjan algorithm
 void tarjan(int v, vector<Element>& elements, int& time, stack<int>& st, vector<vector<int>>& sccs) {
     elements[v].dfs = elements[v].low = time++;
     elements[v].visited = true;
@@ -49,7 +49,7 @@ void tarjan(int v, vector<Element>& elements, int& time, stack<int>& st, vector<
     }
 }
  
-// Use Bellman-Ford algorithm to check for positive cycles in the strongly connected components
+// Use a modified Bellman-Ford algorithm with a shortcut to check for positive cycles in the strongly connected components
 bool has_Positive_cycle(const vector<int>& scc, const vector<Element>& elements) {
     int n = scc.size();
 
@@ -91,7 +91,7 @@ int main() {
         elements[num].weights.push_back(weight);       
     }
 
-    // Perform Trojan's algorithm to find strongly connected components
+    // Perform Tarjan's algorithm to find strongly connected components
     stack<int> st;
     vector<vector<int>> sccs;
     int time = 0;
