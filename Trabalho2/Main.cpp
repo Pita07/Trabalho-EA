@@ -2,7 +2,7 @@
 #include <vector>
 #include <stack>    
 #include <algorithm>
-#include <unordered_set>
+#include <queue>
 
 using namespace std;
 
@@ -15,8 +15,9 @@ public:
     bool onStack;
     vector<int> adj;
     vector<int> weights;
-
-    Element(int val) : num(val), low(-1), dfs(-1), visited(false), onStack(false), weights(), adj() {}
+    int scc_id;
+    
+    Element(int val) : num(val), low(-1), dfs(-1), visited(false), onStack(false), scc_id(-1), weights(), adj() {}
 };
 
 // Tarjan algorithm
@@ -41,6 +42,7 @@ void tarjan(int v, vector<Element>& elements, int& time, stack<int>& st, vector<
         while (true) {
             int w = st.top(); st.pop();
             elements[w].onStack = false;
+            elements[w].scc_id = sccs.size(); // tag each node with its SCC id
             scc.push_back(elements[w].num); 
             if (w == v) break;
         }
@@ -49,28 +51,51 @@ void tarjan(int v, vector<Element>& elements, int& time, stack<int>& st, vector<
     }
 }
  
-// Use a modified Bellman-Ford algorithm with a shortcut to check for positive cycles in the strongly connected components
-bool has_Positive_cycle(const vector<int>& scc, const vector<Element>& elements) {
+// Use a modified Bellman-Ford algorithm with a queue to detect negative cycles in the SCC (SPFA)
+bool has_Positive_cycle(const vector<int>& scc, vector<Element>& elements, int id) {
     int n = scc.size();
 
     if (n == 1) {
         int u = scc[0];
-        for (int i = 0; i < (int)elements[u].adj.size(); i++) {
-            if (elements[u].adj[i] == u && elements[u].weights[i] > 0)
+        for (int i = 0; i < (int)elements[u].adj.size(); i++)
+            if (elements[u].adj[i] == u && elements[u].weights[i] < 0) // negative weight = fuel gain
                 return true;
-        }
         return false;
     }
 
-    // In a SCC with 2+ nodes, just one edge with negative weight (fuel gain) is enough to have a positive cycle
-    unordered_set<int> inSCC(scc.begin(), scc.end());
-    for (int u : scc) {
+    // Map global index to local SCC index
+    vector<int> localIdx(elements.size(), -1);
+    for (int i = 0; i < n; i++) localIdx[scc[i]] = i;
+
+    vector<long long> dist(n, 0);
+    vector<int> cnt(n, 0);
+    vector<bool> inQueue(n, true);
+    queue<int> q;
+    for (int u : scc) q.push(u);
+
+    bool result = false;
+    while (!q.empty() && !result) {
+        int u = q.front(); q.pop();
+        inQueue[localIdx[u]] = false;
+
         for (int j = 0; j < (int)elements[u].adj.size(); j++) {
-            if (inSCC.count(elements[u].adj[j]) && elements[u].weights[j] < 0)
-                return true;
+            int v = elements[u].adj[j];
+            int cost = elements[u].weights[j];
+            if (elements[v].scc_id != id) continue; // skip edges outside this SCC
+
+            if (dist[localIdx[v]] > dist[localIdx[u]] + cost) {
+                dist[localIdx[v]] = dist[localIdx[u]] + cost;
+                cnt[localIdx[v]]++;
+                if (cnt[localIdx[v]] >= n) { result = true; break; }
+                if (!inQueue[localIdx[v]]) {
+                    inQueue[localIdx[v]] = true;
+                    q.push(v);
+                }
+            }
         }
     }
-    return false;
+
+    return result;
 }
 
 
@@ -103,10 +128,9 @@ int main() {
 
     // Check each strongly connected component for positive cycles
     vector<vector<int>> positiveSCCs;
-    for (const auto& scc : sccs) {
-        if (has_Positive_cycle(scc, elements)) {
-            positiveSCCs.push_back(scc);
-        }
+    for (int i = 0; i < (int)sccs.size(); i++) {
+        if (has_Positive_cycle(sccs[i], elements, i))
+            positiveSCCs.push_back(sccs[i]);
     }
 
     cout << positiveSCCs.size() << "\n";
